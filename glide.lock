@@ -1,0 +1,21 @@
+hash: 9a4e6ce0d7cadb4bfcab0aa00801f7242d6e2fd36c18877806705234602892ad
+updated: 2017-12-07T15:51:16.021825917-05:00
+imports:
+- name: github.com/fatih/color
+  version: 570b54cabe6b8eb0bc2dfce68d964677d63b5260
+- name: github.com/mattn/go-colorable
+  version: 5411d3eea5978e6cdc258b30de592b60df6aba96
+  repo: https://github.com/mattn/go-colorable
+- name: github.com/mattn/go-isatty
+  version: 57fdcb988a5c543893cc61bce354a6e24ab70022
+  repo: https://github.com/mattn/go-isatty
+- name: github.com/qrtp/gpxgo
+  version: d9d4536a7be1424eff8ed4c8adcaf79910a40bd4 
+  subpackages:
+  - gpx
+- name: golang.org/x/sys
+  version: e24f485414aeafb646f6fca458b0bf869c0880a1
+  repo: https://go.googlesource.com/sys
+  subpackages:
+  - unix
+testImports: []

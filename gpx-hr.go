@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/fatih/color"
-	"github.com/tkrajina/gpxgo/gpx"
+	"github.com/qrtp/gpxgo/gpx"
 	"io/ioutil"
 	"os"
 	"path/filepath"
