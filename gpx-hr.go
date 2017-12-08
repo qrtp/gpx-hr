@@ -14,23 +14,34 @@ import (
 	"time"
 )
 
+const (
+	AggregateHistogram = "AGGREGATE_DATA"
+	GroupByMonth       = "month"
+	GroupByWeek        = "week"
+)
+
 func main() {
 
 	// Parse flags
 	fileList := flag.String("files", "default.gpx", "comma separated list of paths to GPX files")
 	dirPath := flag.String("directory", "", "path to directory to search for GPX files")
 	zoneList := flag.String("zones", "150", "comma separated list of heart rate zone thresholds")
+	groupBy := flag.String("groupBy", "month", "can specify either month or week, default=month")
 	flag.Parse()
+
+	// Validate group flag
+	if *groupBy != GroupByWeek && *groupBy != GroupByMonth {
+		fmt.Printf("invalid grouping value: %s\n", *groupBy)
+		os.Exit(1)
+	}
 
 	// Create aggregate zone buckets
 	zoneThresholds := strings.Split(*zoneList, ",")
-	aggregateData := &Histogram{
-		Name:    "Aggregate Heart Rate Zones",
-		Buckets: initBuckets(zoneThresholds),
-	}
 
-	// Month zone buckets
-	monthBuckets := make(map[string]Histogram)
+	// Heart rate zones by group, plus a special aggregate histogram
+	// to summarize the whole data set.
+	histograms := make(map[string]*Histogram)
+	histograms[AggregateHistogram] = newHistogram("Heart Rate Zone Summary", zoneThresholds)
 
 	// Search files if dirpath provided
 	if dirPath != nil && *dirPath != "" {
@@ -67,88 +78,111 @@ func main() {
 			os.Exit(4)
 		}
 
-		// Month data
-		monthKey := fmt.Sprintf("%d-%s", gpxFile.Time.Year(), fmt.Sprintf("%02d", gpxFile.Time.Month()))
-		if _, ok := monthBuckets[monthKey]; !ok {
-			monthBuckets[monthKey] = Histogram{
-				Name:    fmt.Sprintf("%s Heart rate zones", monthKey),
-				Buckets: initBuckets(zoneThresholds),
-			}
+		// Determine group key
+		groupKey := fmt.Sprintf("%d-%s", gpxFile.Time.Year(), fmt.Sprintf("%02d", gpxFile.Time.Month()))
+		if *groupBy == GroupByWeek {
+			year, weekOfYear := gpxFile.Time.ISOWeek()
+			groupKey = fmt.Sprintf("%d week %s", year, fmt.Sprintf("%02d", weekOfYear))
 		}
-		monthHs := monthBuckets[monthKey]
-		monthHsPtr := &monthHs
 
-		// Dump GPX heart rates into buckets
+		// Initialize group histogram if this is first data point
+		if _, ok := histograms[groupKey]; !ok {
+			histograms[groupKey] = newHistogram(fmt.Sprintf("%s Heart rate zones", groupKey), zoneThresholds)
+		}
+
+		// Dump GPX heart rates into zone histograms
 		for _, track := range gpxFile.Tracks {
 			for _, segment := range track.Segments {
 				for i := 0; i < len(segment.Points)-1; i++ {
 					currPoint := segment.Points[i]
 					nextPoint := segment.Points[i+1]
 					secondsElapsed := currPoint.TimeDiff(&nextPoint)
-					aggregateData.AddHeartRate(currPoint.HeartRate, secondsElapsed)
-					monthHsPtr.AddHeartRate(currPoint.HeartRate, secondsElapsed)
+					histograms[AggregateHistogram].AddHeartRate(currPoint.HeartRate, secondsElapsed)
+					histograms[groupKey].AddHeartRate(currPoint.HeartRate, secondsElapsed)
 				}
 			}
 		}
 	}
 
 	// Render the results
-	monthBucketKeys := make([]string, 0, len(monthBuckets))
-	for key := range monthBuckets {
-		monthBucketKeys = append(monthBucketKeys, key)
+	numHistograms := len(histograms)
+	if numHistograms > 2 {
+		groupKeys := make([]string, 0, len(histograms))
+		for key := range histograms {
+			groupKeys = append(groupKeys, key)
+		}
+		sort.Strings(groupKeys)
+		for _, key := range groupKeys {
+			histograms[key].Print()
+		}
+	} else {
+		histograms[AggregateHistogram].Print()
 	}
-	sort.Strings(monthBucketKeys)
-	for _, key := range monthBucketKeys {
-		monthBuckets[key].Print()
-	}
-	fmt.Println("")
-	aggregateData.Print()
 }
 
 type Bucket struct {
-	HeartRate int
-	Duration  float64
-	Count     int
+	Count        int
+	ThresholdHR  int
+	TotalSeconds float64
 }
 
 type Histogram struct {
-	Name    string
-	Buckets []Bucket
+	Buckets          []Bucket
+	Name             string
+	MaxEncounteredHR int
+	TotalSeconds     float64
+	TotalHR          float64
 }
 
-func initBuckets(zoneThresholds []string) []Bucket {
-	buckets := make([]Bucket, len(zoneThresholds)+1)
+func newHistogram(name string, zoneThresholds []string) *Histogram {
+	histogram := Histogram{
+		Name:    name,
+		Buckets: make([]Bucket, len(zoneThresholds)+1),
+	}
 	for i, threshold := range zoneThresholds {
 		hr, err := strconv.Atoi(threshold)
 		if err != nil {
 			fmt.Printf("unable to create zone %s\n", threshold)
 			os.Exit(1)
 		}
-		buckets[i+1].HeartRate = hr
+		histogram.Buckets[i+1].ThresholdHR = hr
 	}
-	return buckets
+	return &histogram
 }
 
-func (h Histogram) Print() {
+func (h *Histogram) Print() {
 	total := 0.0
 	for _, bucket := range h.Buckets {
-		total += bucket.Duration
+		total += bucket.TotalSeconds
 	}
 
 	// Render the histogram
 	fmtGreen := color.New(color.FgGreen).Add(color.Bold)
 	fmtGreen.Println(h.Name)
 	for _, bucket := range h.Buckets {
-		pct := 100 * bucket.Duration / total
-		duration := time.Duration(bucket.Duration) * time.Second
-		fmt.Printf("> %d \t %.1f%% \t [%s]\n", bucket.HeartRate, pct, duration.String())
+		pct := 100 * bucket.TotalSeconds / total
+		duration := time.Duration(bucket.TotalSeconds) * time.Second
+		fmt.Printf("> %d \t %.1f%% \t [%s]\n", bucket.ThresholdHR, pct, duration.String())
 	}
+	fmt.Println("")
+	fmt.Printf("Max: %d\n", h.MaxEncounteredHR)
+	fmt.Printf("Avg: %.0f\n", h.TotalHR/h.TotalSeconds)
+	fmt.Println("")
 }
 
 func (h *Histogram) AddHeartRate(hr int, elapsed float64) {
+
+	// Record cumulative statistics
+	if hr > h.MaxEncounteredHR {
+		h.MaxEncounteredHR = hr
+	}
+	h.TotalSeconds += elapsed
+	h.TotalHR += float64(hr) * elapsed
+
+	// Choose and add to bucket
 	numBuckets := len(h.Buckets)
 	for i := 0; i < numBuckets-1; i++ {
-		if hr < h.Buckets[i+1].HeartRate {
+		if hr < h.Buckets[i+1].ThresholdHR {
 			bucket := &h.Buckets[i]
 			bucket.AddToBucket(elapsed)
 			return
@@ -160,5 +194,5 @@ func (h *Histogram) AddHeartRate(hr int, elapsed float64) {
 
 func (b *Bucket) AddToBucket(elapsed float64) {
 	b.Count++
-	b.Duration += elapsed
+	b.TotalSeconds += elapsed
 }
