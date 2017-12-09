@@ -21,10 +21,10 @@ cd gpx-hr
 The `directory` and `zones` flags both need to be specified. The `directory` is the path where you extracted all the GPX
 files downloaded from Strava. The `zones` flag is a comma separated list of heart rate zones to analyze. This of course
 is different for every athlete. I wrote this tool to determine how close I am to 80/20 running, and as you can tell below
-my pacing needs a **LOT** of work based on a 150 bpm threshold.
+my pacing needs a **LOT** of work based on a 157bpm low intensity threshold.
 
 ```
-go run gpx-hr.go --directory "/path/to/strava/activities/*.gpx" --zones 157,188
+go run cmd/gpx-hr/gpx-hr.go --directory "/path/to/strava/activities/*.gpx" --zones 157,188
 ```
 
 Results in the following output:
