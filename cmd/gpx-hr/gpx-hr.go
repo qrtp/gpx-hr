@@ -21,9 +21,9 @@ const (
 func main() {
 
 	// Parse flags
-	fileList := flag.String("files", "default.gpx", "comma separated list of paths to GPX files")
+	fileList := flag.String("files", "", "comma separated list of paths to GPX files")
 	dirPath := flag.String("directory", "", "path to directory to search for GPX files")
-	zoneList := flag.String("zones", "150", "comma separated list of heart rate zone thresholds")
+	zoneList := flag.String("zones", "157", "comma separated list of heart rate zone thresholds")
 	groupBy := flag.String("groupBy", "month", "can specify either month or week, default=month")
 	flag.Parse()
 
@@ -41,8 +41,19 @@ func main() {
 	histograms := make(map[string]*histogram.Histogram)
 	histograms[AggregateHistogram] = histogram.NewHistogram("Heart Rate Zone Summary", zoneThresholds)
 
+	// Default to CWD if no files specified
+	if *dirPath == "" && *fileList == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("unable to determine current working directory: %s\n", err.Error())
+			os.Exit(1)
+		}
+		cwd = fmt.Sprintf("%s/*.gpx", cwd)
+		dirPath = &cwd
+	}
+
 	// Search files if dirpath provided
-	if dirPath != nil && *dirPath != "" {
+	if *dirPath != "" {
 		files, err := filepath.Glob(fmt.Sprintf("%s", *dirPath))
 		if err != nil {
 			fmt.Printf("unable to list directory %s: %s\n", *dirPath, err.Error())
